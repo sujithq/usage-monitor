@@ -17,11 +17,11 @@ Real-time Copilot CLI usage monitor built with **.NET 10** and **Spectre.Console
 
 ```bash
 # Track a command invocation and log usage
- dotnet run --project /home/runner/work/usage-monitor/usage-monitor/src/UsageMonitor.Cli/UsageMonitor.Cli.csproj -- \
+ dotnet run --project src/UsageMonitor.Cli/UsageMonitor.Cli.csproj -- \
    track --tag my-task --mode tokens -- gh copilot ask "explain this bug"
 
 # Show summary grouped by repository
- dotnet run --project /home/runner/work/usage-monitor/usage-monitor/src/UsageMonitor.Cli/UsageMonitor.Cli.csproj -- \
+ dotnet run --project src/UsageMonitor.Cli/UsageMonitor.Cli.csproj -- \
    summary --group-by repo --since-days 7 --top 10
 ```
 
