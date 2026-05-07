@@ -32,4 +32,42 @@ public sealed class VsCodeCopilotChatExportUsageParserTests
 
         measurement.RequestCount.Should().Be(1);
     }
+
+    [Fact]
+    public void Parse_ShouldFallbackToSingleRequest_ForEmptyExport()
+    {
+        var measurement = VsCodeCopilotChatExportUsageParser.Parse(string.Empty);
+
+        measurement.RequestCount.Should().Be(1);
+        measurement.InputCharacters.Should().Be(0);
+    }
+
+    [Fact]
+    public void Parse_ShouldFallbackToSingleRequest_WhenOnlyCopilotResponsesExist()
+    {
+        const string export = """
+            ## Copilot
+            Here is one response.
+            ## Copilot
+            Here is another response.
+            """;
+
+        var measurement = VsCodeCopilotChatExportUsageParser.Parse(export);
+
+        measurement.RequestCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void Parse_ShouldIgnoreMidLineUserWords()
+    {
+        const string export = """
+            ## Copilot
+            If the user asks for X, do Y.
+            another line mentioning user text
+            """;
+
+        var measurement = VsCodeCopilotChatExportUsageParser.Parse(export);
+
+        measurement.RequestCount.Should().Be(1);
+    }
 }

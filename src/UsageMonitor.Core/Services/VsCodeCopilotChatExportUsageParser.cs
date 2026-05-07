@@ -5,9 +5,18 @@ namespace UsageMonitor.Core.Services;
 
 public static partial class VsCodeCopilotChatExportUsageParser
 {
-    [GeneratedRegex(@"^\s*(?:#+\s*)?(?:user|you)\b", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    // Matches user-turn headers at line starts (for example "## User" or "User:").
+    [GeneratedRegex(@"^\s*(?:#+\s*)?user\b", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
     private static partial Regex UserTurnRegex();
 
+    /// <summary>
+    /// Parses a VS Code Copilot Chat export and estimates usage for logging.
+    /// </summary>
+    /// <param name="chatExport">The exported chat text.</param>
+    /// <returns>
+    /// A <see cref="UsageMeasurement"/> with token fields parsed when present, input characters set from export length,
+    /// and request count estimated from user-turn markers such as "## User" or "User:".
+    /// </returns>
     public static UsageMeasurement Parse(string chatExport)
     {
         var measurement = CopilotOutputUsageParser.Parse("vscode copilot chat", chatExport);

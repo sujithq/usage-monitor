@@ -55,35 +55,15 @@ public sealed class TrackCommand : AsyncCommand<TrackCommand.Settings>
             : new TokenUsageUnitStrategy();
 
         var (repoRoot, branch) = GitContextProvider.TryGetContext(Environment.CurrentDirectory);
-        string commandType;
-        string commandLine;
-        int exitCode;
-        UsageMeasurement measurement;
-
-        if (hasVsCodeExport)
+        var trackResult = hasVsCodeExport
+            ? await TrackVsCodeExportAsync(settings.VsCodeChatExportPath!, cancellationToken)
+            : await TrackWrappedCommandAsync(commandParts, cancellationToken);
+        if (trackResult is null)
         {
-            var exportPath = Path.GetFullPath(settings.VsCodeChatExportPath!);
-            if (!File.Exists(exportPath))
-            {
-                AnsiConsole.MarkupLine($"[red]VS Code chat export not found:[/] {Markup.Escape(exportPath)}");
-                return 1;
-            }
-
-            var chatExport = await File.ReadAllTextAsync(exportPath, cancellationToken);
-            measurement = VsCodeCopilotChatExportUsageParser.Parse(chatExport);
-            commandType = "vscode-copilot-chat";
-            commandLine = $"vscode-chat-export {QuoteIfNeeded(exportPath)}";
-            exitCode = 0;
+            return 1;
         }
-        else
-        {
-            commandType = commandParts[0];
-            commandLine = string.Join(' ', commandParts.Select(QuoteIfNeeded));
 
-            var processResult = await ProcessRunner.RunAsync(commandParts, cancellationToken);
-            exitCode = processResult.ExitCode;
-            measurement = CopilotOutputUsageParser.Parse(commandLine, processResult.CombinedOutput);
-        }
+        var (commandType, commandLine, exitCode, measurement) = trackResult.Value;
 
         var usage = strategy.Compute(measurement);
 
@@ -126,5 +106,39 @@ public sealed class TrackCommand : AsyncCommand<TrackCommand.Settings>
     private static string QuoteIfNeeded(string value)
     {
         return value.Contains(' ', StringComparison.Ordinal) ? $"\"{value.Replace("\"", "\\\"", StringComparison.Ordinal)}\"" : value;
+    }
+
+    private static async Task<(string CommandType, string CommandLine, int ExitCode, UsageMeasurement Measurement)?> TrackVsCodeExportAsync(
+        string exportPathInput,
+        CancellationToken cancellationToken)
+    {
+        var exportPath = Path.GetFullPath(exportPathInput);
+        if (!File.Exists(exportPath))
+        {
+            AnsiConsole.MarkupLine($"[red]VS Code chat export not found:[/] {Markup.Escape(exportPath)}");
+            return null;
+        }
+
+        var chatExport = await File.ReadAllTextAsync(exportPath, cancellationToken);
+        return (
+            CommandType: "vscode-copilot-chat",
+            CommandLine: $"vscode-chat-export {QuoteIfNeeded(exportPath)}",
+            ExitCode: 0,
+            Measurement: VsCodeCopilotChatExportUsageParser.Parse(chatExport));
+    }
+
+    private static async Task<(string CommandType, string CommandLine, int ExitCode, UsageMeasurement Measurement)?> TrackWrappedCommandAsync(
+        IReadOnlyList<string> commandParts,
+        CancellationToken cancellationToken)
+    {
+        var commandType = commandParts[0];
+        var commandLine = string.Join(' ', commandParts.Select(QuoteIfNeeded));
+        var processResult = await ProcessRunner.RunAsync(commandParts, cancellationToken);
+
+        return (
+            CommandType: commandType,
+            CommandLine: commandLine,
+            ExitCode: processResult.ExitCode,
+            Measurement: CopilotOutputUsageParser.Parse(commandLine, processResult.CombinedOutput));
     }
 }
