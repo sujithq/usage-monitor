@@ -7,8 +7,9 @@ app.Configure(configuration =>
 {
     configuration.SetApplicationName("usage-monitor");
     configuration.AddCommand<TrackCommand>("track")
-        .WithDescription("Run a Copilot CLI command and log usage/cost attribution")
-        .WithExample(["track", "--", "gh", "copilot", "ask", "explain this error"]);
+        .WithDescription("Track Copilot CLI commands or imported VS Code Copilot chat usage")
+        .WithExample(["track", "--", "gh", "copilot", "ask", "explain this error"])
+        .WithExample(["track", "--vscode-chat-export", "chat.md", "--mode", "requests"]);
     configuration.AddCommand<SummaryCommand>("summary")
         .WithDescription("Show historical usage aggregated by command/repo/branch")
         .WithExample(["summary", "--group-by", "repo", "--since-days", "7"]);

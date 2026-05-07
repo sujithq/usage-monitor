@@ -10,6 +10,9 @@ public sealed class TrackCommand : AsyncCommand<TrackCommand.Settings>
 {
     public sealed class Settings : CommandSettings
     {
+        [CommandOption("--vscode-chat-export <PATH>")]
+        public string? VsCodeChatExportPath { get; init; }
+
         [CommandOption("--tag <TAG>")]
         public string? TaskTag { get; init; }
 
@@ -29,7 +32,15 @@ public sealed class TrackCommand : AsyncCommand<TrackCommand.Settings>
     protected override async Task<int> ExecuteAsync(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         var commandParts = context.Remaining.Raw.ToList();
-        if (commandParts.Count == 0)
+        var hasVsCodeExport = !string.IsNullOrWhiteSpace(settings.VsCodeChatExportPath);
+
+        if (hasVsCodeExport && commandParts.Count > 0)
+        {
+            AnsiConsole.MarkupLine("[red]Use either [grey]--vscode-chat-export[/] or a wrapped command, not both.[/]");
+            return 1;
+        }
+
+        if (!hasVsCodeExport && commandParts.Count == 0)
         {
             AnsiConsole.MarkupLine("[red]No command provided.[/] Example: [grey]usage-monitor track -- gh copilot ask \"help me\"[/]");
             return 1;
@@ -44,11 +55,36 @@ public sealed class TrackCommand : AsyncCommand<TrackCommand.Settings>
             : new TokenUsageUnitStrategy();
 
         var (repoRoot, branch) = GitContextProvider.TryGetContext(Environment.CurrentDirectory);
+        string commandType;
+        string commandLine;
+        int exitCode;
+        UsageMeasurement measurement;
 
-        var commandLine = string.Join(' ', commandParts.Select(QuoteIfNeeded));
+        if (hasVsCodeExport)
+        {
+            var exportPath = Path.GetFullPath(settings.VsCodeChatExportPath!);
+            if (!File.Exists(exportPath))
+            {
+                AnsiConsole.MarkupLine($"[red]VS Code chat export not found:[/] {Markup.Escape(exportPath)}");
+                return 1;
+            }
 
-        var (exitCode, combinedOutput) = await ProcessRunner.RunAsync(commandParts, cancellationToken);
-        var measurement = CopilotOutputUsageParser.Parse(commandLine, combinedOutput);
+            var chatExport = await File.ReadAllTextAsync(exportPath, cancellationToken);
+            measurement = VsCodeCopilotChatExportUsageParser.Parse(chatExport);
+            commandType = "vscode-copilot-chat";
+            commandLine = $"vscode-chat-export {QuoteIfNeeded(exportPath)}";
+            exitCode = 0;
+        }
+        else
+        {
+            commandType = commandParts[0];
+            commandLine = string.Join(' ', commandParts.Select(QuoteIfNeeded));
+
+            var processResult = await ProcessRunner.RunAsync(commandParts, cancellationToken);
+            exitCode = processResult.ExitCode;
+            measurement = CopilotOutputUsageParser.Parse(commandLine, processResult.CombinedOutput);
+        }
+
         var usage = strategy.Compute(measurement);
 
         var cost = UsageCostEstimator.EstimateUsd(
@@ -62,7 +98,7 @@ public sealed class TrackCommand : AsyncCommand<TrackCommand.Settings>
 
         var record = new UsageRecord(
             TimestampUtc: DateTimeOffset.UtcNow,
-            CommandType: commandParts[0],
+            CommandType: commandType,
             CommandLine: commandLine,
             RepositoryPath: repoRoot,
             Branch: branch,
@@ -81,7 +117,7 @@ public sealed class TrackCommand : AsyncCommand<TrackCommand.Settings>
 
         var estimateLabel = usage.IsEstimated ? " (estimated)" : string.Empty;
         AnsiConsole.MarkupLine(
-            $"[green]Used {usage.Units:N0} {usage.UnitLabel}{estimateLabel} (~${cost:F6})[/] for [blue]{Markup.Escape(commandParts[0])}[/].");
+            $"[green]Used {usage.Units:N0} {usage.UnitLabel}{estimateLabel} (~${cost:F6})[/] for [blue]{Markup.Escape(commandType)}[/].");
         AnsiConsole.MarkupLine($"[grey]Log:[/] {Markup.Escape(store.FilePath)}");
 
         return exitCode;
